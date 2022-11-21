@@ -330,7 +330,10 @@ class RoutineAgent(
             val index = findFirstCountableActionFrom((position - 1).toInt())
 
             return if(index != -1) {
+                cancelCurrentAction()
                 pause()
+                scheduledFutureForCancelByInterrupt?.cancel(true)
+                scheduledFutureForCancelByInterrupt = null
                 tryStartActionIndexAt(index)
                 true
             } else {
@@ -420,9 +423,8 @@ class RoutineAgent(
                 return
             }
 
-            currentActionIndex = index
-
-            if (currentActionIndex < directive.payload.actions.size) {
+            if (index < directive.payload.actions.size) {
+                currentActionIndex = index
                 doAction(directive.payload.actions[currentActionIndex])
             } else {
                 listener.onFinish()
@@ -532,7 +534,7 @@ class RoutineAgent(
                             pause()
                         } else {
                             cancelNextScheduledAction()
-                            if(!tryStartNextAction) {
+                            if(!tryStartNextAction && currentActionIndex < directive.payload.actions.size - 1) {
                                 return
                             }
 
