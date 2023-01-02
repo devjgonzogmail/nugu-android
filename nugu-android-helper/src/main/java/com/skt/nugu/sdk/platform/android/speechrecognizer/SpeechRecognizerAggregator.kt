@@ -23,12 +23,15 @@ import com.skt.nugu.sdk.agent.asr.WakeupInfo
 import com.skt.nugu.sdk.agent.asr.audio.AudioEndPointDetector
 import com.skt.nugu.sdk.agent.asr.audio.AudioFormat
 import com.skt.nugu.sdk.agent.asr.audio.AudioProvider
+import com.skt.nugu.sdk.agent.sds.SharedDataStream
 import com.skt.nugu.sdk.core.utils.Logger
 import com.skt.nugu.sdk.core.utils.UUIDGeneration
+import com.skt.nugu.sdk.platform.android.speechrecognizer.recorder.KeywordRecorder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
+import kotlin.math.min
 
 class SpeechRecognizerAggregator(
     private val keywordDetector: KeywordDetector?,
@@ -54,6 +57,8 @@ class SpeechRecognizerAggregator(
 
     private var isTriggerStoppingByStartListening = false
 
+    var keywordRecorder: KeywordRecorder? = null
+
     private data class StartListeningParam(
         var wakeupInfo: WakeupInfo? = null,
         var epdParam: EndPointDetectorParam? = null,
@@ -64,7 +69,6 @@ class SpeechRecognizerAggregator(
     private var pendingStartListeningParam: StartListeningParam? = null
 
     private var keywordDetectorState = KeywordDetector.State.INACTIVE
-    private var speechProcessorState = AudioEndPointDetector.State.STOP
 
     init {
         keywordDetector?.addOnStateChangeListener(object : KeywordDetector.OnStateChangeListener {
@@ -102,9 +106,7 @@ class SpeechRecognizerAggregator(
 
             override fun onExpectingSpeech() {
                 executor.submit {
-                    if (keywordDetector?.getDetectorState() == KeywordDetector.State.ACTIVE) {
-                        keywordDetector.stopDetect()
-                    }
+                    keywordDetector?.stopDetect()
                     isTriggerStoppingByStartListening = false
 
                     updateState(AudioEndPointDetector.State.EXPECTING_SPEECH , SpeechRecognizerAggregatorInterface.State.EXPECTING_SPEECH)
@@ -148,6 +150,7 @@ class SpeechRecognizerAggregator(
                         keywordDetectorInactivationRunnable = Runnable {
                             setState(aggregatorState)
                         }
+                        keywordDetector?.stopDetect()
                     } else {
                         setState(aggregatorState)
                     }
@@ -170,7 +173,7 @@ class SpeechRecognizerAggregator(
         }
 
         executor.submit {
-            if (keywordDetector.getDetectorState() == KeywordDetector.State.ACTIVE) {
+            if (keywordDetectorState == KeywordDetector.State.ACTIVE) {
                 Logger.w(TAG, "[startListeningWithTrigger] failed - already executing")
                 return@submit
             }
@@ -198,6 +201,11 @@ class SpeechRecognizerAggregator(
                         TAG,
                         "[onDetected] wakeupInfo: $wakeupInfo"
                     )
+                    keywordRecorder?.let { recorder->
+                        Thread {
+                            recordDetectedKeyword(recorder, inputStream, wakeupInfo)
+                        }.start()
+                    }
 
                     keywordDetectorResultRunnable = Runnable {
                         setState(SpeechRecognizerAggregatorInterface.State.WAKEUP)
@@ -216,6 +224,38 @@ class SpeechRecognizerAggregator(
                             setState(SpeechRecognizerAggregatorInterface.State.IDLE)
                             releaseInputResources()
                         }
+                    }
+                }
+
+                private fun recordDetectedKeyword(
+                    recorder: KeywordRecorder,
+                    source: SharedDataStream,
+                    wakeupInfo: WakeupInfo
+                ) {
+                    var reader: SharedDataStream.Reader? = null
+                    try {
+                        reader = source.createReader(wakeupInfo.boundary.startPosition)
+                        val totalSizeInBytesToRead = wakeupInfo.boundary.endPosition - wakeupInfo.boundary.startPosition
+
+                        val buffer = ByteArray(2048)
+                        var read = -1
+                        var leftSizeToWrite = totalSizeInBytesToRead
+                        if (recorder.open()) {
+                            while (leftSizeToWrite > 0) {
+                                read = reader.read(
+                                    buffer,
+                                    0,
+                                    min(buffer.size, leftSizeToWrite.toInt())
+                                )
+                                if (read > 0) {
+                                    recorder.write(buffer, 0, read)
+                                    leftSizeToWrite -= read
+                                }
+                            }
+                            recorder.close()
+                        }
+                    } finally {
+                        reader?.close()
                     }
                 }
 
@@ -281,7 +321,7 @@ class SpeechRecognizerAggregator(
         executor.submit {
             Logger.d(
                 TAG,
-                "[startListening] on executor - wakeupInfo: $wakeupInfo, state: $state, keywordDetectorState: ${keywordDetector?.getDetectorState()}, isTriggerStoppingByStartListening: $isTriggerStoppingByStartListening"
+                "[startListening] on executor - wakeupInfo: $wakeupInfo, state: $state, keywordDetectorState: ${keywordDetectorState}, isTriggerStoppingByStartListening: $isTriggerStoppingByStartListening"
             )
             when (state) {
                 SpeechRecognizerAggregatorInterface.State.WAITING -> {
