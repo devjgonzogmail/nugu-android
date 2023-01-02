@@ -146,6 +146,8 @@ open class TemplateRenderer(
             val previousSameServiceRenderInfo =
                 (fragmentManagerRef.get()?.fragments?.find { it is TemplateFragment && it.getPlayServiceId() == playServiceId && it.getRenderInfo() != null } as? TemplateFragment)?.getRenderInfo()
 
+            Logger.d(TAG, "render() isListSupportTemplate : $isListSupportTemplate, previousSameServiceRenderInfo : $previousSameServiceRenderInfo ")
+
             fragmentManagerRef.get()?.beginTransaction()?.run {
                 val newTemplate = TemplateFragment.newInstance(
                     nuguProvider = nuguClientProvider,
