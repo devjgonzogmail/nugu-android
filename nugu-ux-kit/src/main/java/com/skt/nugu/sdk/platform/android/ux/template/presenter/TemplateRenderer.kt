@@ -91,7 +91,7 @@ open class TemplateRenderer(
     private val fragmentCallback = object : FragmentLifecycleCallbacks() {
         override fun onFragmentDestroyed(fm: FragmentManager, f: Fragment) {
             Logger.d(TAG, "fragment destroy . current mediaTemplate cnt :${getMediaTemplateCount()}")
-            if (getMediaTemplateCount() == 0) hidePlaylist()
+            if (getMediaTemplateCount() == 0) hidePlaylist("media template not exist")
 
             if (f is PlaylistFragment) {
                 fm.fragments.filterIsInstance<PlaylistStateListener>().forEach {
@@ -173,13 +173,14 @@ open class TemplateRenderer(
                 setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out).add(containerId, newTemplate, displayType.name).apply {
                     // todo. when different playlist.. even it is same service
                     if (newTemplate.isMediaTemplate()) {
-                        // bring PlaylistFragment to front when  same service mediaTemplate coming up.
+                        // bring PlaylistFragment to front when same service mediaTemplate coming up.
                         if (isListSupportTemplate && previousSameServiceRenderInfo != null) {
                             fragmentManagerRef.get()?.fragments?.find { it is PlaylistFragment }?.let { playlistFragment ->
                                 detach(playlistFragment).attach(playlistFragment)
                             }
                         } else {
                             fragmentManagerRef.get()?.fragments?.find { it is PlaylistFragment }?.let { playlistFragment ->
+                                Logger.d(TAG, "hidePlaylist. another media service template rendered")
                                 remove(playlistFragment)
                             }
                         }
@@ -226,8 +227,6 @@ open class TemplateRenderer(
             }
         }
 
-        hidePlaylist()
-
         return (clearCnt > 0).also { Logger.i(TAG, "clearAll(). $clearCnt template cleared ") }
     }
 
@@ -266,8 +265,8 @@ open class TemplateRenderer(
         return true
     }
 
-    override fun hidePlaylist(): Boolean {
-        Logger.d(TAG, "hidePlaylist")
+    override fun hidePlaylist(reason: String?): Boolean {
+        Logger.d(TAG, "hidePlaylist. reason : $reason")
 
         fragmentManagerRef.get()?.let { fragmentManager ->
             fragmentManager.findFragmentByTag(PlaylistFragment.TAG)?.let { playlistFragment ->
@@ -284,9 +283,16 @@ open class TemplateRenderer(
     override fun setElementSelected(token: String, postback: String?, callback: DisplayInterface.OnElementSelectedCallback?) {
         (fragmentManagerRef.get()?.fragments?.find { (it as? TemplateFragment)?.isMediaTemplate() == true } as? TemplateFragment)?.getTemplateId()
             ?.let { templateId ->
-                nuguClientProvider.getNuguClient().audioPlayerAgent?.setElementSelected(templateId, token, postback, callback)
+                runCatching {
+                    nuguClientProvider.getNuguClient().audioPlayerAgent?.setElementSelected(templateId, token, postback, callback)
+                }.onFailure {
+                    Logger.e(TAG, it.message ?: "", it)
+                }
             }
+    }
 
+    override fun textInput(text : String, playServiceId: String?) {
+        nuguClientProvider.getNuguClient().textAgent?.requestTextInput(text, playServiceId)
     }
 
     override fun modifyPlaylist(deletedTokens: List<String>, tokens: List<String>) {
@@ -324,7 +330,7 @@ open class TemplateRenderer(
             it.onClearPlaylist()
         }
 
-        hidePlaylist()
+        hidePlaylist("playlist data cleared")
     }
 
     private fun getPlaylistBottomMargin(): Int {

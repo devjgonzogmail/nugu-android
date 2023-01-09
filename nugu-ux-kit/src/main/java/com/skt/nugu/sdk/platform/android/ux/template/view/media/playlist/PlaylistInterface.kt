@@ -7,7 +7,7 @@ import com.skt.nugu.sdk.agent.display.DisplayInterface
 interface PlaylistRenderer {
     fun showPlaylist(): Boolean
 
-    fun hidePlaylist(): Boolean
+    fun hidePlaylist(reason: String? = null): Boolean
 
     fun isPlaylistVisible(): Boolean
 }
@@ -33,6 +33,8 @@ interface PlaylistEventListener {
         callback: DisplayInterface.OnElementSelectedCallback?
     ) {
     }
+
+    fun textInput(text: String, playServiceId: String?)
 
     fun modifyPlaylist(deletedTokens: List<String>, tokens: List<String>) {}
 }

@@ -23,6 +23,11 @@ class AudioPlayerPlaylistManager : PlaylistManager, AudioPlayerMetadataDirective
         if(currentPlaylist?.playServiceId == playServiceId && currentPlaylist.token == token) {
             updatePlaylist(playServiceId, rawPlaylist)
         } else {
+            // if previous list exist, notify clear playlist explicitly
+            if (currentPlaylist != null) {
+                clearPlaylist()
+            }
+
             val newPlaylist = Playlist(playServiceId, token, rawPlaylist)
             this.playlist = newPlaylist
 
@@ -58,7 +63,7 @@ class AudioPlayerPlaylistManager : PlaylistManager, AudioPlayerMetadataDirective
         currentPlaylist: Playlist,
         changes: JsonObject
     ) {
-        currentPlaylist.raw.mergePlaylist(changes)
+        currentPlaylist.raw.mergePlaylist(changes.deepCopy())
 
         listeners.forEach {
             it.onUpdatePlaylist(changes, currentPlaylist)

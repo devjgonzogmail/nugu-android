@@ -8,6 +8,7 @@ import com.skt.nugu.sdk.agent.display.DisplayInterface
 import com.skt.nugu.sdk.core.utils.Logger
 import com.skt.nugu.sdk.platform.android.ux.template.model.ButtonObject
 import com.skt.nugu.sdk.platform.android.ux.template.model.Playlist
+import com.skt.nugu.sdk.platform.android.ux.template.webview.ButtonEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -35,9 +36,6 @@ class PlaylistViewModel : ViewModel() {
 
     private val _updatePlaylistItem = MutableSharedFlow<Int>()
     val updatePlaylistItem = _updatePlaylistItem.asSharedFlow()
-
-    private val _movePlaylistItem = MutableSharedFlow<Pair<Int, Int>>()  //from, to
-    val movePlaylistItem = _movePlaylistItem.asSharedFlow()
 
     private val _removePlaylistItem = MutableSharedFlow<List<Int>>()
     val removePlaylistItem = _removePlaylistItem.asSharedFlow()
@@ -90,33 +88,40 @@ class PlaylistViewModel : ViewModel() {
 
     fun setPlaylist(list: PlaylistFromAgent) {
         Logger.d(TAG, "setPlaylist() ${list.raw}")
-        _playlist.value.clear()
 
         fromJsonOrNull(list.raw.toString(), Playlist::class.java)?.let { playlist ->
             Logger.d(TAG, "setPlaylist() playlist parsing success")
 
-            playlist.list.items.run {
-                _playlist.value.addAll(map { ListItem(it, false, it.token == playlist.currentToken) })
+            playlist.list?.items?.run {
+                replacePlaylist(this, playlist.currentToken)
             }
 
             CoroutineScope(Dispatchers.Main).launch {
-                _updatePlaylist.emit(Unit)
-                _title.emit(playlist.title?.text?.text)
+                _title.emit(playlist.subTitle?.text?.text)
                 _editButton.emit(playlist.edit)
                 _button.emit(playlist.button)
             }
         }
     }
 
-    fun updatePlaylist(changes: JsonObject, updated: PlaylistFromAgent) {
-        Logger.d(TAG, "updatePlaylist() changed:\n$changes, \n updated:\n$updated")
+    private fun replacePlaylist(list: List<Playlist.PlayListItem>, currentToken: String?) {
+        CoroutineScope(Dispatchers.Main).launch {
+            _playlist.value.clear()
+            _playlist.value.addAll(list.map { ListItem(it, false, it.token == currentToken) })
 
-        fromJsonOrNull(updated.raw, Playlist::class.java)?.let { changedPlaylist ->
+            _updatePlaylist.emit(Unit)
+        }
+    }
+
+    fun updatePlaylist(changes: JsonObject, updated: PlaylistFromAgent) {
+        Logger.d(TAG, "updatePlaylist() changed:\n$changes")
+
+        fromJsonOrNull(changes, Playlist::class.java)?.let { changedPlaylist ->
             Logger.d(TAG, "updatePlaylist() parsing success")
 
             CoroutineScope(Dispatchers.Main).launch {
                 // title
-                changedPlaylist.title?.text?.text?.apply { _title.emit(this) }
+                changedPlaylist.subTitle?.text?.text?.apply { _title.emit(this) }
 
                 // edit button
                 changedPlaylist.edit?.apply { _editButton.emit(this) }
@@ -125,28 +130,47 @@ class PlaylistViewModel : ViewModel() {
                 changedPlaylist.button?.apply { _button.emit(this) }
             }
 
-            // list items
-            changedPlaylist.list.items.forEach { newItems ->
-                playlist.value.find { it.item.token == newItems.token }?.let { targetItem ->
-                    if (newItems.favorite != null) targetItem.item.favorite = newItems.favorite
-                    if (newItems.postback != null) targetItem.item.postback = newItems.postback
-                    CoroutineScope(Dispatchers.Main).launch {
-                        _updatePlaylistItem.emit(playlist.value.indexOf(targetItem))
-                    }
+            var listReplaced = false
+            // replace all when updated list is  different with current known data
+            fromJsonOrNull(updated.raw, Playlist::class.java)?.let { updatedList ->
+                val updatedTokens = updatedList.list?.items?.map { it.token }
+                val currentTokens = playlist.value.map { it.item.token }
+
+                if (updatedTokens != null && updatedTokens != currentTokens) {
+                    Logger.d(TAG, "updatePlaylist() updatedList is different with current known list. replace all")
+                    Logger.d(TAG, "updatePlaylist() updateTokens $updatedTokens")
+                    Logger.d(TAG, "updatePlaylist() currentTokens $currentTokens")
+                    listReplaced = true
+                    replacePlaylist(updatedList.list.items, updatedList.currentToken)
+                } else {
+                    Logger.d(TAG, "updatePlaylist() updatedList is same with current known list")
                 }
             }
 
-            // current playing item
-            if (changedPlaylist.currentToken?.isNotBlank() == true) {
-                val prevPlayingIndex = playlist.value.indexOfFirst { it.isPlaying }
-                val currPlayingIndex = playlist.value.indexOfFirst { it.item.token == changedPlaylist.currentToken }
+            if (!listReplaced) {
+                // list items
+                changedPlaylist.list?.items?.forEach { newItems ->
+                    playlist.value.find { it.item.token == newItems.token }?.let { targetItem ->
+                        if (newItems.favorite != null) targetItem.item.favorite = newItems.favorite
+                        if (newItems.postback != null) targetItem.item.postback = newItems.postback
+                        CoroutineScope(Dispatchers.Main).launch {
+                            _updatePlaylistItem.emit(playlist.value.indexOf(targetItem))
+                        }
+                    }
+                }
 
-                _playlist.value.getOrNull(prevPlayingIndex)?.isPlaying = false
-                _playlist.value.getOrNull(currPlayingIndex)?.isPlaying = true
+                // current playing item
+                if (changedPlaylist.currentToken?.isNotBlank() == true) {
+                    val prevPlayingIndex = playlist.value.indexOfFirst { it.isPlaying }
+                    val currPlayingIndex = playlist.value.indexOfFirst { it.item.token == changedPlaylist.currentToken }
 
-                CoroutineScope(Dispatchers.Main).launch {
-                    if (prevPlayingIndex != -1) _updatePlaylistItem.emit(prevPlayingIndex)
-                    if (currPlayingIndex != -1) _updatePlaylistItem.emit(currPlayingIndex)
+                    _playlist.value.getOrNull(prevPlayingIndex)?.isPlaying = false
+                    _playlist.value.getOrNull(currPlayingIndex)?.isPlaying = true
+
+                    CoroutineScope(Dispatchers.Main).launch {
+                        if (prevPlayingIndex != -1) _updatePlaylistItem.emit(prevPlayingIndex)
+                        if (currPlayingIndex != -1) _updatePlaylistItem.emit(currPlayingIndex)
+                    }
                 }
             }
         }
@@ -162,11 +186,6 @@ class PlaylistViewModel : ViewModel() {
             runCatching {
                 val removed = _playlist.value.removeAt(from)
                 _playlist.value.add(to, removed)
-            }.onSuccess {
-                CoroutineScope(Dispatchers.Main).launch {
-                    _movePlaylistItem.emit(from to to)
-                }
-
                 onListChanged()
             }
         }
@@ -179,7 +198,23 @@ class PlaylistViewModel : ViewModel() {
     fun onButtonClicked() {
         Logger.d(TAG, "onButtonClicked()  token: ${button.value?.token}")
         button.value?.run {
-            eventListener?.setElementSelected(token, postback.toString(), null)
+            if (eventType == ButtonEvent.TextInput.eventType) {
+                if (textInput != null) {
+                    eventListener?.textInput(textInput.text, textInput.playServiceId)
+                } else {
+                    Logger.e(TAG, "onButtonClicked() token: ${button.value?.token}. evenType is 'textInput' but textInput value is not exist")
+                }
+            } else {
+                eventListener?.setElementSelected(token, gson.toJson(postback), object : DisplayInterface.OnElementSelectedCallback {
+                    override fun onSuccess(dialogRequestId: String) {
+                        Logger.d(TAG, "onButtonClicked() elementSelected SUCCESS. dialogRequestId:$dialogRequestId")
+                    }
+
+                    override fun onError(dialogRequestId: String, errorType: DisplayInterface.ErrorType) {
+                        Logger.d(TAG, "onButtonClicked() elementSelected ERROR. dialogRequestId:$dialogRequestId, errorType $errorType")
+                    }
+                })
+            }
         }
     }
 
@@ -198,9 +233,8 @@ class PlaylistViewModel : ViewModel() {
             onSelectedStateChanged()
         } else {
             if (!clickedItem.isPlaying) {
-                eventListener?.setElementSelected(
-                    clickedItem.item.token,
-                    clickedItem.item.postback.toString(),
+                eventListener?.setElementSelected(clickedItem.item.token,
+                    gson.toJson(clickedItem.item.postback),
                     object : DisplayInterface.OnElementSelectedCallback {
                         override fun onSuccess(dialogRequestId: String) {
                             Logger.d(TAG, "onItemClicked() elementSelected SUCCESS. dialogRequestId:$dialogRequestId")
@@ -217,7 +251,7 @@ class PlaylistViewModel : ViewModel() {
     fun onItemFavoriteClicked(position: Int) {
         Logger.d(TAG, "onItemFavoriteClicked() token: ${_playlist.value.getOrNull(position)?.item?.favorite?.token}")
         _playlist.value.getOrNull(position)?.item?.favorite?.run {
-            eventListener?.setElementSelected(token, postback.toString(), object : DisplayInterface.OnElementSelectedCallback {
+            eventListener?.setElementSelected(token, gson.toJson(postback), object : DisplayInterface.OnElementSelectedCallback {
                 override fun onSuccess(dialogRequestId: String) {
                     Logger.d(TAG, "onItemFavoriteClicked() SUCCESS. dialogRequestId:$dialogRequestId")
                 }

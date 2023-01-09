@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.gson.JsonObject
 import com.skt.nugu.sdk.agent.audioplayer.playlist.Playlist
 import com.skt.nugu.sdk.platform.android.ux.R
+import com.skt.nugu.sdk.platform.android.ux.widget.NuguSimpleDialogView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,8 +30,7 @@ class PlaylistFragment : Fragment(), PlaylistDataListener {
         const val TAG = "PlaylistFragment"
 
         fun newInstance(
-            playlist: Playlist?,
-            eventListener: PlaylistEventListener
+            playlist: Playlist?, eventListener: PlaylistEventListener
         ): PlaylistFragment {
             return PlaylistFragment().apply {
                 this.playlist = playlist
@@ -54,6 +54,7 @@ class PlaylistFragment : Fragment(), PlaylistDataListener {
 
             if (from in 0 until adapter.itemCount && to in 0 until adapter.itemCount) {
                 viewModel.moveItem(from, to)
+                adapter.moveData(from, to)
                 return true
             }
 
@@ -137,7 +138,7 @@ class PlaylistFragment : Fragment(), PlaylistDataListener {
 
             btnDelete = it.findViewById<TextView?>(R.id.btn_delete).apply {
                 setOnClickListener {
-                    viewModel.onDeleteBtnClicked()
+                    onDeleteClicked()
                 }
             }
 
@@ -148,7 +149,7 @@ class PlaylistFragment : Fragment(), PlaylistDataListener {
             }
 
             it.findViewById<View>(R.id.btn_cancel).setOnClickListener {
-                viewModel.onBtnCancelClicked()
+                onCancelClicked()
             }
         }
     }
@@ -184,10 +185,6 @@ class PlaylistFragment : Fragment(), PlaylistDataListener {
 
         viewModel.removePlaylistItem.collectCancelable {
             adapter.removeItem(it)
-        }
-
-        viewModel.movePlaylistItem.collectCancelable {
-            adapter.moveData(it.first, it.second)
         }
 
         viewModel.title.collectCancelable {
@@ -239,6 +236,42 @@ class PlaylistFragment : Fragment(), PlaylistDataListener {
 
     override fun onClearPlaylist() {
         viewModel.clearPlaylist()
+    }
+
+    private fun onCancelClicked() {
+        if (viewModel.completable.value) {
+            (view as? ViewGroup)?.let { root ->
+                NuguSimpleDialogView(
+                    requireContext(),
+                    root = root,
+                    title = getString(R.string.nugu_playlist_dialog_cancel_title),
+                    positiveText = getString(R.string.nugu_playlist_dialog_cancel_positive),
+                    negativeText = getString(R.string.nugu_playlist_dialog_negative),
+                    onPositive = {
+                        viewModel.onBtnCancelClicked()
+                    },
+                ).show()
+            }
+        } else {
+            viewModel.onBtnCancelClicked()
+        }
+    }
+
+    private fun onDeleteClicked() {
+        if (viewModel.editMode.value) {
+            (view as? ViewGroup)?.let { root ->
+                NuguSimpleDialogView(
+                    requireContext(),
+                    root = root,
+                    title = getString(R.string.nugu_playlist_dialog_delete_title, viewModel.playlist.value.count { it.isSelected }),
+                    positiveText = getString(R.string.nugu_playlist_dialog_delete_positive),
+                    negativeText = getString(R.string.nugu_playlist_dialog_negative),
+                    onPositive = {
+                        viewModel.onDeleteBtnClicked()
+                    },
+                ).show()
+            }
+        }
     }
 
     fun observeEditMode(listener: (Boolean) -> Unit) {
