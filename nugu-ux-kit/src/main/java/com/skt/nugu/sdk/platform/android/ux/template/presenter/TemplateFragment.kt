@@ -309,7 +309,7 @@ class TemplateFragment : Fragment(), PlaylistStateListener {
      */
     private fun onClose(isUserIntention: Boolean = true) {
         Logger.d(TAG,
-            "onClose.. current notifyRenderedState. ${viewModel.renderNotified}, isUserInteraction : $isUserIntention,  externalRendering :${
+            "onClose.. templateId : ${getTemplateId()}, current notifyRenderedState. ${viewModel.renderNotified}, isUserInteraction : $isUserIntention,  externalRendering :${
                 viewModel.externalRenderer?.getVisibleList()?.any { it.templateId == getTemplateId() } == true
             }")
 
