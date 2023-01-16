@@ -149,7 +149,8 @@ open class DisplayAudioPlayer constructor(
             }
         }
 
-    private var playlistRenderer: PlaylistRenderer? = null
+    protected var playlistRenderer: PlaylistRenderer? = null
+        private set
 
     @VisibleForTesting
     internal val mediaListener = object : TemplateHandler.ClientListener {
@@ -208,13 +209,13 @@ open class DisplayAudioPlayer constructor(
         var isLyricShowing: Int,
     ) : AbsSavedState(superState) {
 
-        override fun writeToParcel(dest: Parcel?, flags: Int) {
+        override fun writeToParcel(dest: Parcel, flags: Int) {
             super.writeToParcel(dest, flags)
-            dest?.writeLong(durationMs)
-            dest?.writeLong(currentTimeMs)
-            dest?.writeInt(mediaPlaying)
-            dest?.writeInt(isBarType)
-            dest?.writeInt(isLyricShowing)
+            dest.writeLong(durationMs)
+            dest.writeLong(currentTimeMs)
+            dest.writeInt(mediaPlaying)
+            dest.writeInt(isBarType)
+            dest.writeInt(isLyricShowing)
         }
     }
 
