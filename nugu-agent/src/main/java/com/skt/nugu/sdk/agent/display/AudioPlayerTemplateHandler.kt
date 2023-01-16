@@ -328,8 +328,9 @@ class AudioPlayerTemplateHandler(
         controller: AudioPlayerDisplayInterface.Controller?
     ) {
         executor.submit {
+            Logger.d(TAG, "[onRendered] $templateId")
             templateDirectiveInfoMap[templateId]?.let {
-                Logger.d(TAG, "[onRendered] $templateId")
+                Logger.d(TAG, "[onRendered] $templateId success")
                 renderedTemplateDirectiveInfoMap[templateId] = it
                 playSynchronizer.startSync(it)
                 interLayerDisplayPolicyManager.onDisplayLayerRendered(it.layerForInterLayerDisplayPolicy)

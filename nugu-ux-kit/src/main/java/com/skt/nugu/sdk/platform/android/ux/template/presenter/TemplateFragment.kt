@@ -329,7 +329,10 @@ class TemplateFragment : Fragment(), PlaylistStateListener {
         if (viewModel.renderNotified == RenderNotifyState.NONE) {
             Logger.i(TAG, "notifyRendered ${getTemplateId()}")
             viewModel.nuguClientProvider.getNuguClient().getDisplay()
-                ?.displayCardRendered(getTemplateId(), (templateView?.templateHandler as? DefaultTemplateHandler)?.displayController)
+                ?.run {
+                    Logger.i(TAG, "notifyRendered ${getTemplateId()} success")
+                    displayCardRendered(getTemplateId(), (templateView?.templateHandler as? DefaultTemplateHandler)?.displayController)
+                }
             viewModel.renderNotified = RenderNotifyState.RENDERED
         }
     }
