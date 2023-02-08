@@ -28,10 +28,12 @@ class PlaylistViewModel : ViewModel() {
 
     private var eventListener: PlaylistEventListener? = null
 
+    var playlistBottomMargin: Int = 0
+
     private val _playlist = MutableStateFlow<ArrayList<ListItem>>(arrayListOf())
     val playlist = _playlist.asStateFlow()
 
-    private val _updatePlaylist = MutableSharedFlow<Unit>()
+    private val _updatePlaylist = MutableSharedFlow<Boolean>() // use diffUtil
     val updatePlaylist = _updatePlaylist.asSharedFlow()
 
     private val _updatePlaylistItem = MutableSharedFlow<Int>()
@@ -109,7 +111,7 @@ class PlaylistViewModel : ViewModel() {
             _playlist.value.clear()
             _playlist.value.addAll(list.map { ListItem(it, false, it.token == currentToken) })
 
-            _updatePlaylist.emit(Unit)
+            _updatePlaylist.emit(true)
         }
     }
 
@@ -281,7 +283,7 @@ class PlaylistViewModel : ViewModel() {
         }
 
         CoroutineScope(Dispatchers.Main).launch {
-            _updatePlaylist.emit(Unit)
+            _updatePlaylist.emit(false)
         }
     }
 
@@ -314,7 +316,7 @@ class PlaylistViewModel : ViewModel() {
                 _playlist.value.addAll(previousList ?: return)
 
                 CoroutineScope(Dispatchers.Main).launch {
-                    _updatePlaylist.emit(Unit)
+                    _updatePlaylist.emit(false)
                 }
             }
 
